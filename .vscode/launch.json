@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run DSP Application",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "OPENBLAS_NUM_THREADS": "1",
+                "OMP_NUM_THREADS": "1"
+            }
+        }
+    ]
+}
