@@ -140,3 +140,4 @@ DSP/
 ## Notes
 
 This project is intentionally modular so new signal-processing tasks can be added without altering the core signal model or the GUI shell.
+"# DSP" 
