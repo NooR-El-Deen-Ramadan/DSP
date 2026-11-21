@@ -92,6 +92,11 @@ The application currently supports:
 - Advance: $y[n] = x[n+k]$
 - Folding: $y[n] = x[-n]$
 - Quantization: map each sample to the midpoint of one of the requested uniform levels
+- Moving Average (Task 5): $y[n] = \frac{1}{W} \sum_{k=0}^{W-1} x[n+k]$ with user-configurable window size $W$
+- First Derivative / Sharpening (Task 5): $Y(n) = x(n) - x(n-1)$
+- Second Derivative / Sharpening (Task 5): $Y(n) = x(n+1) - 2x(n) + x(n-1)$
+- Convolution (Task 5): $y[n] = (x_1 * x_2)[n] = \sum_k x_1[k] \cdot x_2[n-k]$
+- Test Case Verification: In-app and script-level `Compare_Signals` / `compare_signals` to validate outputs against expected benchmark test files.
 
 The implementation uses aligned sample indices and treats missing index values as zero when combining signals.
 
@@ -121,14 +126,20 @@ DSP/
 │       ├── signal_list_widget.py
 │       └── signal_plot_widget.py
 ├── tests/
+│   ├── testcases_lab5/
+│   │   ├── Convolution testcases/
+│   │   ├── Derivative testcases/
+│   │   └── Moving Average testcases/
 │   ├── test_signal_generation.py
 │   ├── test_signal_io.py
-│   └── test_signal_operations.py
+│   ├── test_signal_operations.py
+│   └── test_task5.py
 ├── .gitignore
 ├── main.py
 ├── README.md
 ├── requirements.txt
-└──
+└── sitecustomize.py
+```
 ```
 
 ## Known Limitations

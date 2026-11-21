@@ -26,6 +26,10 @@ from PySide6.QtGui import QAction
 from app.dialogs.about_dialog import AboutDialog
 from app.dialogs.operation_dialogs import (
     AddSignalsDialog,
+    CompareTestDialog,
+    ConvolveSignalsDialog,
+    DerivativeDialog,
+    MovingAverageDialog,
     MultiplyDialog,
     QuantizeDialog,
     QuantizationErrorDialog,
@@ -38,9 +42,13 @@ from app.services.signal_generation import generate_cosine_wave, generate_sine_w
 from app.services.signal_io import export_signal_to_txt, load_signal_from_txt
 from app.services.signal_operations import (
     add_signals,
+    convolve_signals,
+    first_derivative,
     fold_signal,
+    moving_average,
     multiply_signal,
     quantize_signal,
+    second_derivative,
     shift_signal,
     subtract_signals,
 )
@@ -98,6 +106,12 @@ class MainWindow(QMainWindow):
         self.advance_action = QAction("Advance Signal", self)
         self.fold_action = QAction("Fold Signal", self)
         self.quantize_action = QAction("Quantize Signal", self)
+        self.moving_avg_action = QAction("Moving Average", self)
+        self.first_derivative_action = QAction("First Derivative (Sharpening)", self)
+        self.second_derivative_action = QAction("Second Derivative (Sharpening)", self)
+        self.convolve_action = QAction("Convolve Two Signals", self)
+        self.verify_test_action = QAction("Verify Signal with Test Case...", self)
+
         op_menu.addAction(self.add_action)
         op_menu.addAction(self.multiply_action)
         op_menu.addAction(self.subtract_action)
@@ -105,6 +119,13 @@ class MainWindow(QMainWindow):
         op_menu.addAction(self.advance_action)
         op_menu.addAction(self.fold_action)
         op_menu.addAction(self.quantize_action)
+        op_menu.addSeparator()
+        op_menu.addAction(self.moving_avg_action)
+        op_menu.addAction(self.first_derivative_action)
+        op_menu.addAction(self.second_derivative_action)
+        op_menu.addAction(self.convolve_action)
+        op_menu.addSeparator()
+        op_menu.addAction(self.verify_test_action)
 
         view_menu = menubar.addMenu("View")
         self.continuous_action = QAction("Continuous Representation", self)
@@ -155,6 +176,12 @@ class MainWindow(QMainWindow):
         toolbar.addAction(self.advance_action)
         toolbar.addAction(self.fold_action)
         toolbar.addAction(self.quantize_action)
+        toolbar.addSeparator()
+        toolbar.addAction(self.moving_avg_action)
+        toolbar.addAction(self.first_derivative_action)
+        toolbar.addAction(self.second_derivative_action)
+        toolbar.addAction(self.convolve_action)
+        toolbar.addAction(self.verify_test_action)
         toolbar.addSeparator()
         toolbar.addAction(self.clear_plot_action)
         toolbar.addAction(self.clear_all_action)
@@ -266,6 +293,11 @@ class MainWindow(QMainWindow):
         self.advance_action.triggered.connect(self.advance_selected_signal)
         self.fold_action.triggered.connect(self.fold_selected_signal)
         self.quantize_action.triggered.connect(self.quantize_selected_signal)
+        self.moving_avg_action.triggered.connect(self.moving_average_selected_signal)
+        self.first_derivative_action.triggered.connect(self.first_derivative_selected_signal)
+        self.second_derivative_action.triggered.connect(self.second_derivative_selected_signal)
+        self.convolve_action.triggered.connect(self.convolve_selected_signals)
+        self.verify_test_action.triggered.connect(self.verify_selected_signal_with_test)
         self.about_action.triggered.connect(self.show_about)
         self.instructions_action.triggered.connect(self.show_instructions)
         self.sampling_action.triggered.connect(self.show_sampling_theorem)
@@ -533,6 +565,96 @@ class MainWindow(QMainWindow):
             QuantizationErrorDialog(signal, result, self).exec()
         except ValueError as exc:
             QMessageBox.warning(self, "Quantization Error", str(exc))
+
+    def moving_average_selected_signal(self) -> None:
+        if not self.signals:
+            QMessageBox.warning(self, "Moving Average", "No signals available.")
+            return
+        dialog = MovingAverageDialog(self.signals, self)
+        if dialog.exec() == 0:
+            return
+        signal = next((sig for sig in self.signals if sig.name == dialog.signal_combo.currentText()), None)
+        if signal is None:
+            return
+        try:
+            result = moving_average(
+                signal,
+                dialog.window_input.value(),
+                dialog.name_input.text() or "Moving_Average",
+            )
+            self._safe_add_signal(result)
+            self.update_plot()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Moving Average Error", str(exc))
+
+    def first_derivative_selected_signal(self) -> None:
+        if not self.signals:
+            QMessageBox.warning(self, "First Derivative", "No signals available.")
+            return
+        dialog = DerivativeDialog(self.signals, initial_order=1, parent=self)
+        if dialog.exec() == 0:
+            return
+        signal = next((sig for sig in self.signals if sig.name == dialog.signal_combo.currentText()), None)
+        if signal is None:
+            return
+        try:
+            if dialog.order_combo.currentIndex() == 0:
+                result = first_derivative(signal, dialog.name_input.text() or "First_Derivative")
+            else:
+                result = second_derivative(signal, dialog.name_input.text() or "Second_Derivative")
+            self._safe_add_signal(result)
+            self.update_plot()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Derivative Error", str(exc))
+
+    def second_derivative_selected_signal(self) -> None:
+        if not self.signals:
+            QMessageBox.warning(self, "Second Derivative", "No signals available.")
+            return
+        dialog = DerivativeDialog(self.signals, initial_order=2, parent=self)
+        if dialog.exec() == 0:
+            return
+        signal = next((sig for sig in self.signals if sig.name == dialog.signal_combo.currentText()), None)
+        if signal is None:
+            return
+        try:
+            if dialog.order_combo.currentIndex() == 0:
+                result = first_derivative(signal, dialog.name_input.text() or "First_Derivative")
+            else:
+                result = second_derivative(signal, dialog.name_input.text() or "Second_Derivative")
+            self._safe_add_signal(result)
+            self.update_plot()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Derivative Error", str(exc))
+
+    def convolve_selected_signals(self) -> None:
+        if not self.signals:
+            QMessageBox.warning(self, "Convolution", "No signals available.")
+            return
+        dialog = ConvolveSignalsDialog(self.signals, self)
+        if dialog.exec() == 0:
+            return
+        signal_a = next((sig for sig in self.signals if sig.name == dialog.signal_a.currentText()), None)
+        signal_b = next((sig for sig in self.signals if sig.name == dialog.signal_b.currentText()), None)
+        if signal_a is None or signal_b is None:
+            return
+        try:
+            result = convolve_signals(
+                signal_a,
+                signal_b,
+                dialog.name_input.text() or "Convolution_Result",
+            )
+            self._safe_add_signal(result)
+            self.update_plot()
+        except ValueError as exc:
+            QMessageBox.warning(self, "Convolution Error", str(exc))
+
+    def verify_selected_signal_with_test(self) -> None:
+        if not self.signals:
+            QMessageBox.warning(self, "Verify Signal", "No signals available.")
+            return
+        dialog = CompareTestDialog(self.signals, self)
+        dialog.exec()
 
     def compare_two_selected_signals(self) -> None:
         if len(self.signals) < 2:

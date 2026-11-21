@@ -4,9 +4,13 @@ import pytest
 from app.models.signal_model import Signal
 from app.services.signal_operations import (
     add_signals,
+    convolve_signals,
+    first_derivative,
     fold_signal,
+    moving_average,
     multiply_signal,
     quantize_signal,
+    second_derivative,
     shift_signal,
     subtract_signals,
 )
@@ -148,3 +152,37 @@ def test_quantize_signal_rejects_empty_or_non_finite_signal():
         quantize_signal(Signal(name="empty"), levels=2)
     with pytest.raises(ValueError, match="finite"):
         quantize_signal(Signal(name="invalid", indices=[0], values=[np.nan]), levels=2)
+
+
+def test_moving_average_basic():
+    s = Signal(name="x", indices=[0, 1, 2, 3], values=[1.0, 3.0, 5.0, 7.0])
+    res = moving_average(s, window_size=2)
+    assert list(res.indices) == [0, 1, 2]
+    np.testing.assert_allclose(res.values, [2.0, 4.0, 6.0])
+
+
+def test_first_derivative_basic():
+    s = Signal(name="x", indices=[-1, 0, 1, 2], values=[10.0, 12.0, 15.0, 11.0])
+    res = first_derivative(s)
+    assert list(res.indices) == [-1, 0, 1]
+    np.testing.assert_allclose(res.values, [2.0, 3.0, -4.0])
+
+
+def test_second_derivative_basic():
+    s = Signal(name="x", indices=[0, 1, 2, 3], values=[1.0, 4.0, 9.0, 16.0])
+    # x(n+1) - 2x(n) + x(n-1): for n=1: 9 - 8 + 1 = 2; for n=2: 16 - 18 + 9 = 7? Wait: 16 - 2*9 + 4 = 16 - 18 + 4 = 2!
+    res = second_derivative(s)
+    assert list(res.indices) == [0, 1]
+    np.testing.assert_allclose(res.values, [2.0, 2.0])
+
+
+def test_convolve_signals_basic():
+    s1 = Signal(name="s1", indices=[0, 1], values=[1.0, 2.0])
+    s2 = Signal(name="s2", indices=[1, 2], values=[3.0, 4.0])
+    res = convolve_signals(s1, s2)
+    assert list(res.indices) == [1, 2, 3]
+    # y[1] = 1*3 = 3
+    # y[2] = 1*4 + 2*3 = 10
+    # y[3] = 2*4 = 8
+    np.testing.assert_allclose(res.values, [3.0, 10.0, 8.0])
+

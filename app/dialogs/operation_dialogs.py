@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QHeaderView,
     QHBoxLayout,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QSpinBox,
     QTableView,
+    QTextEdit,
     QVBoxLayout,
 )
 
@@ -477,3 +479,190 @@ class QuantizationErrorDialog(QDialog):
         card_layout.addWidget(label)
         card_layout.addWidget(value)
         layout.addWidget(card, 1)
+
+
+class MovingAverageDialog(OperationDialog):
+    def __init__(self, signals: list[Signal], parent=None) -> None:
+        super().__init__("Moving Average", parent)
+        self.signals = signals
+        self.signal_combo = QComboBox()
+        self.signal_combo.addItems([signal.name for signal in signals])
+        self.window_input = QSpinBox()
+        self.window_input.setRange(1, 100000)
+        self.window_input.setValue(3)
+        self.name_input = QLineEdit("Moving_Average")
+
+        self.add_field("Signal:", self.signal_combo)
+        self.add_field("Window size (points):", self.window_input)
+        self.add_field("Result name:", self.name_input)
+
+        self.signal_combo.currentIndexChanged.connect(self._on_signal_changed)
+        self._on_signal_changed()
+
+        buttons = QHBoxLayout()
+        self.ok = QPushButton("Apply")
+        self.cancel = QPushButton("Cancel")
+        buttons.addStretch()
+        buttons.addWidget(self.ok)
+        buttons.addWidget(self.cancel)
+        self.layout_widget.addLayout(buttons)
+        self.ok.clicked.connect(self.accept)
+        self.cancel.clicked.connect(self.reject)
+
+    def _on_signal_changed(self) -> None:
+        idx = self.signal_combo.currentIndex()
+        if 0 <= idx < len(self.signals):
+            count = self.signals[idx].sample_count
+            self.window_input.setMaximum(max(1, count))
+            if self.window_input.value() > count:
+                self.window_input.setValue(min(3, count))
+
+
+class ConvolveSignalsDialog(OperationDialog):
+    def __init__(self, signals: list[Signal], parent=None) -> None:
+        super().__init__("Convolve Signals", parent)
+        self.signal_a = QComboBox()
+        self.signal_b = QComboBox()
+        names = [signal.name for signal in signals]
+        self.signal_a.addItems(names)
+        self.signal_b.addItems(names)
+        if len(names) > 1:
+            self.signal_b.setCurrentIndex(1)
+        self.name_input = QLineEdit("Convolution_Result")
+
+        self.add_field("Signal 1 (x1):", self.signal_a)
+        self.add_field("Signal 2 (x2):", self.signal_b)
+        self.add_field("Result name:", self.name_input)
+
+        buttons = QHBoxLayout()
+        self.ok = QPushButton("Apply")
+        self.cancel = QPushButton("Cancel")
+        buttons.addStretch()
+        buttons.addWidget(self.ok)
+        buttons.addWidget(self.cancel)
+        self.layout_widget.addLayout(buttons)
+        self.ok.clicked.connect(self.accept)
+        self.cancel.clicked.connect(self.reject)
+
+
+class DerivativeDialog(OperationDialog):
+    def __init__(self, signals: list[Signal], initial_order: int = 1, parent=None) -> None:
+        super().__init__("Signal Sharpening (Derivative)", parent)
+        self.signal_combo = QComboBox()
+        self.signal_combo.addItems([signal.name for signal in signals])
+        self.order_combo = QComboBox()
+        self.order_combo.addItems([
+            "First Derivative: Y(n) = x(n) - x(n-1)",
+            "Second Derivative: Y(n) = x(n+1) - 2x(n) + x(n-1)",
+        ])
+        if initial_order == 2:
+            self.order_combo.setCurrentIndex(1)
+        self.name_input = QLineEdit("First_Derivative" if initial_order == 1 else "Second_Derivative")
+
+        self.add_field("Signal:", self.signal_combo)
+        self.add_field("Derivative type:", self.order_combo)
+        self.add_field("Result name:", self.name_input)
+
+        self.order_combo.currentIndexChanged.connect(self._on_order_changed)
+
+        buttons = QHBoxLayout()
+        self.ok = QPushButton("Apply")
+        self.cancel = QPushButton("Cancel")
+        buttons.addStretch()
+        buttons.addWidget(self.ok)
+        buttons.addWidget(self.cancel)
+        self.layout_widget.addLayout(buttons)
+        self.ok.clicked.connect(self.accept)
+        self.cancel.clicked.connect(self.reject)
+
+    def _on_order_changed(self, index: int) -> None:
+        if index == 0:
+            self.name_input.setText("First_Derivative")
+        else:
+            self.name_input.setText("Second_Derivative")
+
+
+class CompareTestDialog(QDialog):
+    def __init__(self, signals: list[Signal], parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Verify Signal with Test Case File")
+        self.resize(560, 360)
+        self.signals = signals
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+
+        form = QFormLayout()
+        self.signal_combo = QComboBox()
+        self.signal_combo.addItems([sig.name for sig in signals])
+        form.addRow("Signal to verify:", self.signal_combo)
+
+        file_row = QHBoxLayout()
+        self.file_path_edit = QLineEdit()
+        self.file_path_edit.setPlaceholderText("Path to expected output TXT file...")
+        self.browse_btn = QPushButton("Browse...")
+        self.browse_btn.clicked.connect(self._browse_file)
+        file_row.addWidget(self.file_path_edit)
+        file_row.addWidget(self.browse_btn)
+        form.addRow("Expected file:", file_row)
+
+        self.tolerance_input = QDoubleSpinBox()
+        self.tolerance_input.setRange(0.000001, 10.0)
+        self.tolerance_input.setValue(0.01)
+        self.tolerance_input.setDecimals(6)
+        form.addRow("Tolerance:", self.tolerance_input)
+        layout.addLayout(form)
+
+        self.verify_btn = QPushButton("Run Verification")
+        self.verify_btn.setStyleSheet("font-weight: bold; padding: 8px;")
+        self.verify_btn.clicked.connect(self._run_verification)
+        layout.addWidget(self.verify_btn)
+
+        self.result_box = QTextEdit()
+        self.result_box.setReadOnly(True)
+        self.result_box.setPlaceholderText("Verification results will appear here...")
+        layout.addWidget(self.result_box)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+    def _browse_file(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Expected Output File",
+            "",
+            "Text Files (*.txt);;All Files (*.*)",
+        )
+        if path:
+            self.file_path_edit.setText(path)
+
+    def _run_verification(self) -> None:
+        if not self.signals:
+            self.result_box.setText("No signals available to verify.")
+            return
+        file_path = self.file_path_edit.text().strip()
+        if not file_path:
+            self.result_box.setText("Please select or enter the expected test file path.")
+            return
+        idx = self.signal_combo.currentIndex()
+        if idx < 0 or idx >= len(self.signals):
+            return
+        sig = self.signals[idx]
+        tol = self.tolerance_input.value()
+        try:
+            from app.services.signal_operations import compare_signals
+            passed, message = compare_signals(file_path, sig, tolerance=tol)
+            if passed:
+                self.result_box.setStyleSheet("background: #0d2818; color: #4ade80; border: 1px solid #22c55e;")
+                self.result_box.setText(f"✓ PASS\n\n{message}")
+            else:
+                self.result_box.setStyleSheet("background: #2a0808; color: #f87171; border: 1px solid #ef4444;")
+                self.result_box.setText(f"✗ FAIL\n\n{message}")
+        except Exception as exc:
+            self.result_box.setStyleSheet("background: #2a0808; color: #f87171; border: 1px solid #ef4444;")
+            self.result_box.setText(f"Error reading file:\n{exc}")
+
